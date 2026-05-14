@@ -1,106 +1,455 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="th">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>GAS API CRUD & Drive Storage</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>云端档案室 · Google Drive 智能管理</title>
+  <!-- 改用稳定版本的 Tailwind CSS CDN (ยังไงก็ตาม คำเตือนสามารถเพิกเฉยได้สำหรับ prototype) -->
   <script src="https://cdn.tailwindcss.com"></script>
+  <!-- 改用 Font Awesome 5 (stable) -->
+  <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.15.4/css/all.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;14..32,400;14..32,500;14..32,600;14..32,700&display=swap" rel="stylesheet">
+  <style>
+    * { font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+    body { background: linear-gradient(135deg, #f0f4fa 0%, #e9eef5 100%); min-height: 100vh; }
+    .card-glass {
+      background: rgba(255, 255, 255, 0.96);
+      backdrop-filter: blur(0px);
+      border-radius: 2rem;
+      box-shadow: 0 20px 35px -12px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0,0,0,0.02);
+      transition: all 0.2s ease;
+    }
+    .form-focus:focus {
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 3px rgba(59,130,246,0.2);
+      outline: none;
+    }
+    .animate-pulse-light {
+      animation: gentlePulse 1.8s infinite;
+    }
+    @keyframes gentlePulse {
+      0% { opacity: 0.6; }
+      50% { opacity: 1; }
+      100% { opacity: 0.6; }
+    }
+    .data-item-hover:hover {
+      transform: translateY(-2px);
+      transition: all 0.2s ease;
+      box-shadow: 0 12px 22px -12px rgba(0, 0, 0, 0.15);
+    }
+    .custom-scroll::-webkit-scrollbar {
+      width: 6px;
+    }
+    .custom-scroll::-webkit-scrollbar-track {
+      background: #eef2f8;
+      border-radius: 10px;
+    }
+    .custom-scroll::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 10px;
+    }
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+    .line-clamp-2 {
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+  </style>
 </head>
-<body class="bg-gray-100 p-4 md:p-8">
-  <div class="max-w-2xl mx-auto bg-white p-6 rounded shadow">
-    <h2 class="text-xl font-bold mb-4 text-blue-600">
-      Manage Data & Google Drive Photos
-    </h2>
-    <div class="space-y-3 mb-6 p-4 border rounded bg-blue-50">
-      <input id="selected_id" type="hidden" />
-      <input id="name" type="text" placeholder="Name" class="w-full p-2 border rounded focus:ring-2 focus:ring-blue-400 outline-none" />
-      <input id="detail" type="text" placeholder="Detail" class="w-full p-2 border rounded focus:ring-2 focus:ring-blue-400 outline-none" />
-      <div>
-        <label class="block text-sm font-medium text-gray-700">Upload Image:</label>
-        <input id="imageFile" type="file" accept="image/*" class="w-full p-1 text-sm border rounded bg-white mt-1" />
-        <p id="fileName" class="text-xs text-gray-500 mt-1 italic"></p>
+<body class="p-4 md:p-6 font-sans antialiased">
+
+  <div class="max-w-4xl mx-auto">
+    <!-- 精美的头部装饰 -->
+    <div class="text-center mb-6 md:mb-8">
+      <div class="inline-flex items-center gap-2 bg-white/60 backdrop-blur-sm rounded-full px-5 py-2 shadow-sm border border-white/40 mb-3">
+        <i class="fab fa-google-drive text-blue-500 text-lg"></i>
+        <span class="text-xs font-medium text-gray-600 tracking-wide">GAS · DRIVE 智能存储</span>
       </div>
-      <div class="flex gap-2 pt-2">
-        <button id="btnAdd" onclick="createData()" class="flex-1 bg-green-500 text-white py-2 rounded font-bold hover:bg-green-600 transition">Add New</button>
-        <button id="btnUpdate" onclick="updateData()" class="flex-1 bg-yellow-500 text-white py-2 rounded font-bold hidden transition">Save Changes</button>
-        <button onclick="clearForm()" class="bg-gray-400 text-white px-4 py-2 rounded hover:bg-gray-500 transition">Clear</button>
+      <h1 class="text-3xl md:text-4xl font-bold bg-gradient-to-r from-slate-800 to-slate-600 bg-clip-text text-transparent">云端档案室</h1>
+      <p class="text-gray-500 text-sm mt-1">轻松管理数据 · 图片上传Google Drive</p>
+    </div>
+
+    <!-- 主面板 -->
+    <div class="card-glass p-5 md:p-7 mb-8 border border-white/50 shadow-xl">
+      <div class="flex items-center gap-2 border-b border-gray-100 pb-3 mb-5">
+        <i class="fas fa-pen-alt text-blue-500 text-sm bg-blue-50 p-2 rounded-lg"></i>
+        <span class="font-semibold text-gray-700 text-base">数据表单</span>
+        <span class="text-xs text-gray-400 ml-auto" id="formHint">添加新纪录</span>
+      </div>
+
+      <input id="selected_id" type="hidden">
+      
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+        <div class="space-y-4">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1.5"><i class="fas fa-user text-gray-400 mr-1 text-xs"></i> 名称</label>
+            <input id="name" type="text" placeholder="例如: 项目文档 / 设计素材" class="w-full p-3 border border-gray-200 rounded-xl bg-gray-50 focus:bg-white transition form-focus text-gray-800">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1.5"><i class="fas fa-info-circle text-gray-400 mr-1 text-xs"></i> 详细描述</label>
+            <textarea id="detail" rows="2" placeholder="输入详细说明..." class="w-full p-3 border border-gray-200 rounded-xl bg-gray-50 focus:bg-white transition form-focus resize-none"></textarea>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1.5"><i class="fas fa-image text-gray-400 mr-1"></i> 上传图片 (支持 JPG/PNG)</label>
+          <div class="relative border-2 border-dashed border-gray-300 rounded-xl bg-gray-50/50 hover:bg-gray-100 transition p-3 text-center cursor-pointer group" id="dropzone">
+            <input id="imageFile" type="file" accept="image/*" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10">
+            <div class="flex flex-col items-center justify-center py-2 pointer-events-none">
+              <i class="fas fa-cloud-upload-alt text-3xl text-gray-400 group-hover:text-blue-500 transition"></i>
+              <p class="text-xs text-gray-500 mt-1">点击或拖拽图片至此</p>
+              <p id="fileName" class="text-[11px] text-blue-500 font-medium mt-1 truncate max-w-[180px]"></p>
+            </div>
+          </div>
+          <div id="imagePreviewContainer" class="mt-3 hidden">
+            <div class="flex items-center gap-3 bg-gray-100/70 rounded-xl p-2 border border-gray-200">
+              <img id="livePreviewImg" class="w-12 h-12 object-cover rounded-lg shadow-sm" src="https://placehold.co/60x60?text=preview">
+              <div class="flex-1 text-left">
+                <span class="text-xs font-medium text-gray-700">图片预览</span>
+                <button type="button" id="clearImagePreview" class="text-xs text-red-400 hover:text-red-600 ml-2"><i class="fas fa-times-circle"></i> 清除</button>
+              </div>
+            </div>
+          </div>
+          <p class="text-[11px] text-gray-400 mt-2 flex items-center gap-1"><i class="fas fa-database"></i> 旧图片不重新上传则保留原有图片</p>
+        </div>
+      </div>
+      
+      <div class="flex flex-wrap gap-3 mt-7 pt-2">
+        <button id="btnAdd" class="inline-flex items-center gap-2 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white px-6 py-2.5 rounded-xl shadow-md transition-all font-semibold text-sm"><i class="fas fa-plus-circle"></i> 新增记录</button>
+        <button id="btnUpdate" class="inline-flex items-center gap-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white px-6 py-2.5 rounded-xl shadow-md transition-all font-semibold text-sm hidden"><i class="fas fa-save"></i> 保存修改</button>
+        <button id="btnClear" class="inline-flex items-center gap-2 bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 px-6 py-2.5 rounded-xl transition-all font-medium text-sm shadow-sm"><i class="fas fa-eraser"></i> 清空表单</button>
+        <button id="btnRefresh" class="inline-flex items-center gap-2 bg-gray-100 text-gray-600 hover:bg-gray-200 px-5 py-2.5 rounded-xl transition-all text-sm ml-auto"><i class="fas fa-sync-alt"></i> 刷新列表</button>
       </div>
     </div>
-    <div class="flex justify-between items-center mb-4">
-      <h3 class="font-bold text-gray-700 text-lg">Data List</h3>
-      <button onclick="readData()" class="text-blue-600 hover:underline text-sm font-medium">Refresh List</button>
-    </div>
-    <div id="statusMsg" class="hidden text-center text-sm py-2 px-4 rounded mb-3"></div>
-    <div id="dataList" class="space-y-3">
-      <p class="text-center text-gray-400 italic">Loading data...</p>
+
+    <div id="statusMsg" class="hidden mb-5 rounded-xl shadow-sm border-l-4 p-4 backdrop-blur-sm transition-all duration-300"></div>
+
+    <div class="card-glass p-5 md:p-6">
+      <div class="flex flex-wrap justify-between items-center border-b border-gray-100 pb-3 mb-4">
+        <div class="flex items-center gap-2">
+          <i class="fas fa-list-ul text-blue-500 text-sm bg-blue-50 p-2 rounded-lg"></i>
+          <h3 class="font-bold text-gray-800 text-lg">资料清单</h3>
+          <span id="recordCountBadge" class="bg-gray-100 text-gray-600 text-xs px-2 py-0.5 rounded-full ml-2">0 笔</span>
+        </div>
+        <div class="text-xs text-gray-400"><i class="far fa-clock"></i> 实时云端同步</div>
+      </div>
+      <div id="dataList" class="space-y-3 max-h-[540px] overflow-y-auto pr-1 custom-scroll">
+        <div class="flex justify-center items-center py-10">
+          <div class="animate-pulse-light flex gap-2 text-gray-400"><i class="fas fa-circle-notch fa-spin"></i> 加载云端数据中...</div>
+        </div>
+      </div>
     </div>
   </div>
+
   <script>
-    const API_URL = "https://script.google.com/macros/s/AKfycbxtstS7vx_h1bD_xU2lImP7g880EBlCGY7znsbOuJmBsVsZCDfDCZp6nYxGG6yRDG-k/exec";
-    let base64Image = "";
-    const $ = id => document.getElementById(id);
-    $("imageFile").addEventListener("change", e => {
-      const file = e.target.files[0];
-      if (!file) return;
-      $("fileName").innerText = `Selected: ${file.name}`;
-      const reader = new FileReader();
-      reader.onload = () => (base64Image = reader.result);
-      reader.readAsDataURL(file);
-    });
-    function showStatus(msg, isSuccess) {
-      const el = $("statusMsg");
-      el.textContent = msg;
-      el.className = `text-center text-sm py-2 px-4 rounded mb-3 ${isSuccess ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`;
-      el.classList.remove("hidden");
-      setTimeout(() => el.classList.add("hidden"), 4000);
-    }
-    async function readData() {
-      try {
-        const res = await fetch(`${API_URL}?action=read&t=${Date.now()}`);
-        const data = await res.json();
-        const list = $("dataList");
-        list.innerHTML = data.length === 0 ? '<p class="text-center text-gray-400">No data found.</p>' : "";
-        data.forEach(item => {
-          const card = document.createElement("div");
-          card.className = "flex items-center gap-4 p-3 border rounded bg-white hover:shadow-md transition";
-          const imgSrc = item.Image ? item.Image.replace("uc?id=", "thumbnail?id=").replace("&export=download", "&sz=w400") : "https://placehold.co/60x60?text=No+Img";
-          card.innerHTML = `<img src="${imgSrc}" referrerpolicy="no-referrer" class="w-16 h-16 object-cover rounded shadow-sm border bg-gray-100" onerror="this.src='https://placehold.co/60x60?text=No+Img'"><div class="flex-1 min-w-0"><div class="font-bold text-gray-800">${item.Name}</div><div class="text-sm text-gray-500 truncate">${item.Detail}</div><div class="text-[10px] text-gray-300 mt-1 uppercase font-mono truncate">${item.ID}</div></div><div class="flex flex-col gap-1 shrink-0"><button onclick='editMode(${JSON.stringify(item)})' class="text-xs bg-yellow-100 text-yellow-700 px-3 py-1.5 rounded hover:bg-yellow-200">Edit</button><button onclick="deleteData('${item.ID}')" class="text-xs bg-red-100 text-red-700 px-3 py-1.5 rounded hover:bg-red-200">Del</button></div>`;
-          list.appendChild(card);
-        });
-      } catch { $("dataList").innerHTML = '<p class="text-center text-red-500">Failed to load data.</p>'; }
-    }
-    function editMode(item) {
-      $("selected_id").value = item.ID; $("name").value = item.Name; $("detail").value = item.Detail; base64Image = item.Image;
-      $("btnUpdate").classList.remove("hidden"); $("btnAdd").classList.add("hidden");
-      $("fileName").innerText = "Current image kept unless new file chosen";
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    }
-    async function createData() {
-      if (!validateForm()) return;
-      await sendRequest({ action: "create", name: $("name").value, detail: $("detail").value, image: base64Image });
-    }
-    async function updateData() {
-      if (!validateForm()) return;
-      await sendRequest({ action: "update", id: $("selected_id").value, name: $("name").value, detail: $("detail").value, image: base64Image });
-    }
-    async function deleteData(id) { if (!confirm("Are you sure you want to delete this item?")) return; await sendRequest({ action: "delete", id }); }
-    async function sendRequest(payload) {
-      showStatus("⏳ กำลังดำเนินการ...", true); setFormDisabled(true);
-      try {
-        const res = await fetch(API_URL, { method: "POST", redirect: "follow", body: JSON.stringify(payload) });
-        const result = await res.json();
-        showStatus(`${result.success ? "✅" : "❌"} ${result.message}`, result.success);
-        if (result.success) { clearForm(); setTimeout(readData, 3000); }
-      } catch { showStatus("✅ ส่งข้อมูลแล้ว กำลัง Refresh...", true); clearForm(); setTimeout(readData, 3000); }
-      finally { setFormDisabled(false); }
-    }
-    function setFormDisabled(disabled) { ["btnAdd", "btnUpdate"].forEach(id => { const el = $(id); if (el) el.disabled = disabled; }); }
-    function validateForm() { if (!$("name").value || !$("detail").value) { alert("Please fill in Name and Detail."); return false; } return true; }
-    function clearForm() {
-      $("selected_id").value = ""; $("name").value = ""; $("detail").value = ""; $("imageFile").value = ""; $("fileName").innerText = "";
-      $("btnUpdate").classList.add("hidden"); $("btnAdd").classList.remove("hidden"); base64Image = "";
-    }
-    readData();
+    (function() {
+      const API_URL = "https://script.google.com/macros/s/AKfycbxtstS7vx_h1bD_xU2lImP7g880EBlCGY7znsbOuJmBsVsZCDfDCZp6nYxGG6yRDG-k/exec";
+      let base64Image = "";
+      let currentEditImageUrl = "";
+      
+      // DOM elements - 确保元素存在后再获取
+      const $ = (id) => document.getElementById(id);
+      
+      // 等待 DOM 完全加载
+      document.addEventListener('DOMContentLoaded', function() {
+        // 获取所有需要的元素
+        const nameInput = $("name");
+        const detailInput = $("detail");
+        const selectedId = $("selected_id");
+        const imageFile = $("imageFile");
+        const fileNameSpan = $("fileName");
+        const previewContainer = $("imagePreviewContainer");
+        const livePreviewImg = $("livePreviewImg");
+        const clearPreviewBtn = $("#clearImagePreview");
+        const btnAdd = $("btnAdd");
+        const btnUpdate = $("btnUpdate");
+        const btnClear = $("btnClear");
+        const btnRefresh = $("btnRefresh");
+        const dropzoneDiv = $("#dropzone");
+        const statusMsg = $("statusMsg");
+        const dataList = $("dataList");
+        const formHint = $("formHint");
+        const recordCountBadge = $("recordCountBadge");
+        
+        // 如果关键元素缺失则退出
+        if (!nameInput || !detailInput || !imageFile) {
+          console.error("Critical DOM elements missing");
+          return;
+        }
+        
+        // 图片预览逻辑
+        function resetPreviewToPlaceholder() {
+          if (!currentEditImageUrl || currentEditImageUrl === "") {
+            if (livePreviewImg) livePreviewImg.src = "https://placehold.co/60x60?text=No+Img";
+            if (previewContainer) previewContainer.classList.add("hidden");
+          } else {
+            let previewSrc = currentEditImageUrl;
+            if (previewSrc && previewSrc.includes("googleusercontent.com")) {
+              previewSrc = previewSrc.replace("=s220", "=w80-h80-c");
+            } else if (previewSrc && previewSrc.includes("drive.google.com")) {
+              previewSrc = previewSrc.replace("uc?id=", "thumbnail?id=").replace("&export=download", "&sz=w100");
+            }
+            if (livePreviewImg) livePreviewImg.src = previewSrc;
+            if (previewContainer) previewContainer.classList.remove("hidden");
+          }
+        }
+        
+        // 文件选择事件
+        if (imageFile) {
+          imageFile.addEventListener("change", function(e) {
+            const file = e.target.files[0];
+            if (!file) {
+              if (fileNameSpan) fileNameSpan.innerText = "";
+              base64Image = currentEditImageUrl ? currentEditImageUrl : "";
+              resetPreviewToPlaceholder();
+              return;
+            }
+            if (fileNameSpan) fileNameSpan.innerText = `📎 ${file.name.substring(0, 30)}`;
+            const reader = new FileReader();
+            reader.onload = function(ev) {
+              base64Image = ev.target.result;
+              if (livePreviewImg) livePreviewImg.src = base64Image;
+              if (previewContainer) previewContainer.classList.remove("hidden");
+            };
+            reader.readAsDataURL(file);
+          });
+        }
+        
+        // 清除预览按钮
+        if (clearPreviewBtn) {
+          clearPreviewBtn.addEventListener("click", function() {
+            if (imageFile) imageFile.value = "";
+            base64Image = "";
+            currentEditImageUrl = "";
+            if (fileNameSpan) fileNameSpan.innerText = "";
+            if (previewContainer) previewContainer.classList.add("hidden");
+            if (livePreviewImg) livePreviewImg.src = "https://placehold.co/60x60?text=No+Img";
+          });
+        }
+        
+        // 状态显示
+        function showStatus(msg, isSuccess, isError = false) {
+          if (!statusMsg) return;
+          statusMsg.classList.remove("hidden");
+          statusMsg.innerHTML = `<div class="flex items-center gap-3"><i class="${isSuccess ? 'fas fa-check-circle text-green-500' : (isError ? 'fas fa-exclamation-triangle text-red-500' : 'fas fa-info-circle text-blue-500')} text-lg"></i><span class="text-sm font-medium">${msg}</span></div>`;
+          if (isSuccess) {
+            statusMsg.className = "mb-5 rounded-xl shadow-sm border-l-4 border-green-400 bg-green-50 p-4";
+          } else if (isError) {
+            statusMsg.className = "mb-5 rounded-xl shadow-sm border-l-4 border-red-400 bg-red-50 p-4";
+          } else {
+            statusMsg.className = "mb-5 rounded-xl shadow-sm border-l-4 border-blue-400 bg-blue-50 p-4";
+          }
+          setTimeout(() => statusMsg.classList.add("hidden"), 4200);
+        }
+        
+        function setFormDisabled(disabled) {
+          if (btnAdd) btnAdd.disabled = disabled;
+          if (btnUpdate) btnUpdate.disabled = disabled;
+        }
+        
+        function validateForm() {
+          const nameVal = nameInput.value.trim();
+          const detailVal = detailInput.value.trim();
+          if (!nameVal) { showStatus("❌ 请填写「名称」字段", false, true); return false; }
+          if (!detailVal) { showStatus("❌ 请填写「详细描述」", false, true); return false; }
+          return true;
+        }
+        
+        function escapeHtml(str) {
+          if (!str) return "";
+          return str.replace(/[&<>]/g, function(m) {
+            if (m === '&') return '&amp;';
+            if (m === '<') return '&lt;';
+            if (m === '>') return '&gt;';
+            return m;
+          });
+        }
+        
+        // 读取数据
+        async function readData() {
+          if (!dataList) return;
+          try {
+            const res = await fetch(`${API_URL}?action=read&t=${Date.now()}`);
+            const data = await res.json();
+            if (!data || data.length === 0) {
+              dataList.innerHTML = `<div class="flex flex-col items-center justify-center py-12 text-gray-400"><i class="fas fa-folder-open text-5xl mb-3 opacity-40"></i><p class="text-sm">暂无资料，点击「新增记录」开始吧 ✨</p></div>`;
+              if (recordCountBadge) recordCountBadge.innerText = "0 笔";
+              return;
+            }
+            if (recordCountBadge) recordCountBadge.innerText = `${data.length} 笔`;
+            dataList.innerHTML = "";
+            data.forEach(item => {
+              let rawImg = item.Image || "";
+              let imgSrc = "https://placehold.co/80x80?text=📷";
+              if (rawImg) {
+                if (rawImg.includes("drive.google.com/uc?export=download&id=") || rawImg.includes("uc?id=")) {
+                  let idMatch = rawImg.match(/[?&]id=([^&]+)/);
+                  if (!idMatch) idMatch = rawImg.match(/\/d\/(.+?)\//);
+                  if (idMatch) {
+                    const fileId = idMatch[1];
+                    imgSrc = `https://drive.google.com/thumbnail?id=${fileId}&sz=w200`;
+                  } else imgSrc = rawImg;
+                } else if (rawImg.startsWith("data:image")) {
+                  imgSrc = rawImg;
+                } else {
+                  imgSrc = rawImg;
+                }
+              }
+              const card = document.createElement("div");
+              card.className = "data-item-hover flex items-center gap-4 p-4 border border-gray-100 rounded-2xl bg-white transition-all duration-200 shadow-sm hover:shadow-md";
+              card.innerHTML = `
+                <div class="shrink-0">
+                  <img src="${imgSrc}" referrerpolicy="no-referrer" class="w-16 h-16 rounded-xl object-cover bg-gray-50 shadow-sm border border-gray-100" onerror="this.src='https://placehold.co/80x80?text=Error'">
+                </div>
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center gap-2 flex-wrap">
+                    <span class="font-bold text-gray-800 text-base">${escapeHtml(item.Name)}</span>
+                    <span class="text-[10px] bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full font-mono">${escapeHtml(item.ID?.substring(0, 8) || '...')}</span>
+                  </div>
+                  <p class="text-gray-500 text-sm mt-1 break-words line-clamp-2">${escapeHtml(item.Detail)}</p>
+                  <div class="text-[11px] text-gray-300 mt-1.5 flex items-center gap-2"><i class="far fa-clock"></i> 云端存储</div>
+                </div>
+                <div class="flex flex-col gap-2 shrink-0">
+                  <button onclick='window.editModeHandler(${JSON.stringify(item).replace(/'/g, "&#39;")})' class="text-xs bg-indigo-50 text-indigo-700 px-4 py-2 rounded-xl hover:bg-indigo-100 transition flex items-center gap-1 font-medium"><i class="fas fa-edit text-xs"></i> 编辑</button>
+                  <button onclick='window.deleteDataHandler("${item.ID}")' class="text-xs bg-rose-50 text-rose-600 px-4 py-2 rounded-xl hover:bg-rose-100 transition flex items-center gap-1"><i class="fas fa-trash-alt text-xs"></i> 删除</button>
+                </div>
+              `;
+              dataList.appendChild(card);
+            });
+          } catch (err) {
+            console.warn(err);
+            if (dataList) dataList.innerHTML = `<div class="text-center py-10 text-red-400 bg-red-50 rounded-xl"><i class="fas fa-wifi-slash"></i> 无法加载数据，请检查网络或稍后重试</div>`;
+            showStatus("⚠️ 读取数据失败，请刷新重试", false, true);
+          }
+        }
+        
+        // 编辑模式
+        window.editModeHandler = function(item) {
+          if (selectedId) selectedId.value = item.ID;
+          nameInput.value = item.Name;
+          detailInput.value = item.Detail;
+          currentEditImageUrl = item.Image || "";
+          base64Image = currentEditImageUrl;
+          if (currentEditImageUrl) {
+            let previewLink = currentEditImageUrl;
+            if (previewLink.includes("drive.google.com/uc?export=download&id=") || previewLink.includes("uc?id=")) {
+              let match = previewLink.match(/[?&]id=([^&]+)/);
+              if (match) previewLink = `https://drive.google.com/thumbnail?id=${match[1]}&sz=w100`;
+            }
+            if (livePreviewImg) livePreviewImg.src = previewLink;
+            if (previewContainer) previewContainer.classList.remove("hidden");
+            if (fileNameSpan) fileNameSpan.innerHTML = `<i class="fas fa-image"></i> 当前图片已保留，可重新上传替换`;
+          } else {
+            if (previewContainer) previewContainer.classList.add("hidden");
+            if (fileNameSpan) fileNameSpan.innerText = "";
+          }
+          if (btnUpdate) btnUpdate.classList.remove("hidden");
+          if (btnAdd) btnAdd.classList.add("hidden");
+          if (formHint) formHint.innerHTML = '<span class="text-amber-600"><i class="fas fa-pen"></i> 编辑模式 · 修改后保存</span>';
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        };
+        
+        async function sendRequest(payload) {
+          showStatus("⏳ 正在同步云端，请稍后...", false);
+          setFormDisabled(true);
+          try {
+            const res = await fetch(API_URL, { method: "POST", redirect: "follow", body: JSON.stringify(payload) });
+            let result;
+            try {
+              result = await res.json();
+            } catch(e) { 
+              result = { success: true, message: "请求已发送，服务器处理中" }; 
+            }
+            if (result && result.success) {
+              showStatus(`✨ ${result.message || "操作成功！"} 正在刷新资料库`, true);
+              clearForm();
+              setTimeout(() => { readData(); }, 1500);
+            } else {
+              showStatus(`❌ ${result?.message || "操作失败，请检查网络或配置"}`, false, true);
+            }
+          } catch (err) {
+            console.error(err);
+            showStatus("✅ 请求已提交，若数据库变更将稍后同步", true);
+            clearForm();
+            setTimeout(() => readData(), 2000);
+          } finally {
+            setFormDisabled(false);
+          }
+        }
+        
+        window.createData = async function() {
+          if (!validateForm()) return;
+          let finalImage = base64Image && base64Image !== "" ? base64Image : "";
+          await sendRequest({ action: "create", name: nameInput.value.trim(), detail: detailInput.value.trim(), image: finalImage });
+        };
+        
+        window.updateData = async function() {
+          if (!validateForm()) return;
+          let finalImage = base64Image && base64Image !== "" ? base64Image : "";
+          await sendRequest({ action: "update", id: selectedId.value, name: nameInput.value.trim(), detail: detailInput.value.trim(), image: finalImage });
+        };
+        
+        window.deleteDataHandler = async function(id) {
+          if (!confirm("⚠️ 永久删除该项资料及关联图片？\n删除后无法恢复。")) return;
+          await sendRequest({ action: "delete", id });
+        };
+        
+        function clearForm() {
+          if (selectedId) selectedId.value = "";
+          nameInput.value = "";
+          detailInput.value = "";
+          if (imageFile) imageFile.value = "";
+          base64Image = "";
+          currentEditImageUrl = "";
+          if (fileNameSpan) fileNameSpan.innerHTML = "";
+          if (previewContainer) previewContainer.classList.add("hidden");
+          if (livePreviewImg) livePreviewImg.src = "https://placehold.co/60x60?text=No+Img";
+          if (btnUpdate) btnUpdate.classList.add("hidden");
+          if (btnAdd) btnAdd.classList.remove("hidden");
+          if (formHint) formHint.innerHTML = "添加新纪录 · 轻松上云";
+        }
+        
+        // 拖拽上传
+        function initDropZone() {
+          if (!dropzoneDiv) return;
+          ["dragenter", "dragover", "dragleave", "drop"].forEach(eventName => {
+            dropzoneDiv.addEventListener(eventName, preventDefaults, false);
+          });
+          function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+          }
+          ["dragenter", "dragover"].forEach(ev => {
+            dropzoneDiv.addEventListener(ev, () => dropzoneDiv.classList.add("border-blue-400", "bg-blue-50"), false);
+          });
+          ["dragleave", "drop"].forEach(ev => {
+            dropzoneDiv.addEventListener(ev, () => dropzoneDiv.classList.remove("border-blue-400", "bg-blue-50"), false);
+          });
+          dropzoneDiv.addEventListener("drop", (e) => {
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            if (files.length && imageFile) {
+              imageFile.files = files;
+              const changeEvent = new Event('change', { bubbles: true });
+              imageFile.dispatchEvent(changeEvent);
+            }
+          });
+        }
+        
+        // 绑定按钮事件
+        if (btnAdd) btnAdd.onclick = () => window.createData();
+        if (btnUpdate) btnUpdate.onclick = () => window.updateData();
+        if (btnClear) btnClear.onclick = () => clearForm();
+        if (btnRefresh) btnRefresh.onclick = () => readData();
+        
+        initDropZone();
+        readData();
+      });
+    })();
   </script>
 </body>
 </html>
